@@ -1156,9 +1156,6 @@ void affordanceMaps::generateHallucinations(vector<Frame> &segment, map< int, ve
 		}
 	}
 
-
-
-
 	// returns a set of sampled points for each affordance
 	// object id, affordance, list of start and end points (can be empty for stationary)
 
