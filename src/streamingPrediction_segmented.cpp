@@ -5,6 +5,9 @@
  * Created on August 29, 2011, 6:16 PM
  */
 
+#define EIGEN_DONT_VECTORIZE 
+#define EIGEN_DISABLE_UNALIGNED_ARRAY_ASSERT
+
 #include <cstdlib>
 #include <cstdio>
 #include <stdio.h>
@@ -38,6 +41,8 @@ typedef pcl::PointXYZRGB PointT;
 //#include "features_multiFrame.cpp"
 #include <boost/regex.hpp>
 #include <boost/algorithm/string/regex.hpp>
+
+
 
 using namespace std;
 
@@ -500,7 +505,9 @@ int main(int argc, char** argv) {
 	string actfile = (string) argv[2];
 	string mirrored_dataLocation = "";
 	string fold = (string) argv[3];
+
 //    string outputFile = "data_extracted/features.txt"; //+ (string)argv[1] + ".txt";
+
 
 	readDataActMap(actfile);
 	readLabelFile();
@@ -518,10 +525,7 @@ int main(int argc, char** argv) {
 		it++;
 	}
 	printf("Number of Files to be processed = %d\n", all_files.size());
-//    printf("Processed data goes to (%s)\n\n", (char*) outputFile.c_str());
 
-	//FILE* pRecFile;
-	//pRecFile = fopen((char*) outputFile.c_str(), "w");
 
 	double **data; //[JOINT_NUM][JOINT_DATA_NUM];
 	int **data_CONF; //[JOINT_NUM][JOINT_DATA_TYPE_NUM]
@@ -548,7 +552,6 @@ int main(int argc, char** argv) {
 		}
 	}
 
-	//fileList[1] = "data/0829113826_obj_2.txt";
 	vector<vector<double> > objData;
 	vector<vector<int> > objPCInds;
 	string lastActId = "0";
@@ -584,29 +587,18 @@ int main(int argc, char** argv) {
 				i + 1, mirrored, mirrored_dataLocation, skipOdd, fileList,
 				objPCFileList);
 		int status = 0;
-		//generateTrajectories gt;
-		FrameFeatures ff(true, "orig_"+all_files[i]);
-		//vector<FrameFeatures *> ffh;
-		//for (int h = 0; h < 3; h++) {
-		//	string name = "hal_" + boost::lexical_cast<string>(h);
+	
 
-		//	ffh.push_back(new FrameFeatures(true, name));
-		//}
+		FrameFeatures ff(true, "orig_"+all_files[i]);
 
 		vector<Frame> segmentHal;
 		vector<Frame> activityFrames;
 		affordanceMaps amaps(globalTransform);
-		/*FeaturesSkel* features_skeleton;
-		 if (useSkeleton)
-		 features_skeleton = new FeaturesSkel((char*) all_files[i].c_str(), pRecFile, mirrored);
-
-
-		 FeaturesSkelRGBD* features_rgbd = new FeaturesSkelRGBD(pRecFile, mirrored);
-		 */
 		int frameNum  = 0;
 		int oldSegNum = 1;
 		// read first n frames
 		int segCount = 1;
+
 		INITIALFRAMECOUNT = SegmentFrameCount[all_files[i]][segCount];
 		for(int numf = 0; numf < INITIALFRAMECOUNT ; numf ++ ){
 			// if status +1 is labeled then read frame else skip frame
@@ -622,6 +614,7 @@ int main(int argc, char** argv) {
 				//compute the frame features
 				ff.setCurrentFrame(frame);
 				ff.computeFreatures(true);
+
 				activityFrames.push_back(frame);
 
 			}else{
@@ -629,11 +622,12 @@ int main(int argc, char** argv) {
 			}
 
 		}
-		
-		// compute the labels for the activity so far
- 		string cmd = "a --m svmstruct_mrf_act_dyn --sf false --temporal true --hal false --fold "+fold+" test_" + all_files.at(i)+".txt fold"+ fold + "/model.txt pred_"+all_files[i]+".txt";
- 		//string cmd = "a --m svmstruct_mrf_act_dyn --sf false --temporal true --hal false test.txt fold"+ fold + "/model.txt pred.txt";
 
+		// compute the labels for the activity so far
+ 		//string cmd = "a --m svmstruct_mrf_act_dyn --divmbest false --sf false --temporal true --hal false --fold "+fold+" test_" + all_files.at(i)+".txt fold"+ fold + "/model.txt pred_"+all_files[i]+".txt";
+ 		string cmd = "a --m svmstruct_mrf_act_dyn --divmbest true --sf false --temporal false --hal false --fold "+fold+" test_" + all_files.at(i)+".txt fold"+ fold + "/model.txt pred_"+all_files[i]+".txt";
+
+ 		cout<<"SVM Python Command: "<<" "<<cmd<<endl;
 		std::vector<char *> args;
 		std::istringstream iss(cmd);
 
@@ -647,10 +641,13 @@ int main(int argc, char** argv) {
 		args.push_back(0);
 
 
+		svm_classifier_init(16 , &args[0]);
+		cout<<"Classifier Initialized"<<endl;
+		//svm_classifier( 16 , &args[0] );
+		//cout<<"Classifier is Called"<<endl;
+		//interpretPrediction("pred_"+all_files[i]+".txt", all_files[i], true);
+		//exit(0);
 
-		svm_classifier_init(14 , &args[0]);
-		svm_classifier( 14 , &args[0] );
-		interpretPrediction("pred_"+all_files[i]+".txt", all_files[i], true);
 			// compute segment features
 			// get the labeling
 		//map< int, vector<hallucination> > allHal;
@@ -659,6 +656,7 @@ int main(int argc, char** argv) {
 			segCount ++;
 			STEPSIZE = SegmentFrameCount[all_files[i]][segCount];
 			map< int,vector < hallucination > > hallucinations;
+			/*
 			if(hallucinate){
 				// generate affordance maps and sample end points
 
@@ -681,7 +679,8 @@ int main(int argc, char** argv) {
 		            //}
 				}
 
-			}
+			}*/
+			//////////////////////////
 
 			// obtain the next set of frames
 
@@ -691,10 +690,11 @@ int main(int argc, char** argv) {
 			}
 			cout << "segment length of segment " << segCount << " is " << STEPSIZE << endl;
 			//vector<Frame> segment;
+			/*
 			set<int> intermediateframes;
 			for(int index =1; index<10; index++ ){
 				intermediateframes.insert(int(index*0.1*STEPSIZE));
-			}
+			}*/
 			int updateCounter =0;
 			for (int numf = 0; numf < STEPSIZE; numf++) {
 				// if status +1 is labeled then read frame else skip frame
@@ -722,6 +722,7 @@ int main(int argc, char** argv) {
 							<< endl;
 					break;
 				}
+/*
 				if(intermediateframes.find(numf)!=intermediateframes.end()){
 					// update hallucinations
 					updateCounter++;
@@ -747,24 +748,23 @@ int main(int argc, char** argv) {
 					}
 
 
-				}
+				}*/
 			}
+//			hallucinations.clear();
+		}
 			writeGTtrajectories(activityFrames,STEPSIZE,count);
 
 			// compute the labels for the activity so far
 			cout << "calling the classifier here" << endl;
-			svm_classifier( 14 , &args[0] );
+			svm_classifier( 16 , &args[0] );
 			// output prediction
 			interpretPrediction("pred_"+all_files[i]+".txt",all_files[i],true);
 
-			hallucinations.clear();
-		}
 
 	}
 	// fclose(pRecFile);
 
 	printf("ALL DONE.\n\n");
-
 	return 0;
 }
 

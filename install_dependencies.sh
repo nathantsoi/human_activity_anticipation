@@ -19,7 +19,7 @@ wget http://tfinley.net/software/pyglpk/pyglpk-0.3.tar.bz2
 tar -xjvf pyglpk-0.3.tar.bz2
 # change -m32 to -m64 in setup.py
 # comment the following line if running on a 32 bit machine
-cp pyglpk_setup.py pyglpk-0.3/setup.py
+#cp pyglpk_setup.py pyglpk-0.3/setup.py
 cd pyglpk-0.3
 make
 sudo make install 

@@ -22,8 +22,10 @@ import glpk
 from bitarray import bitarray
 from graphcut import *
 from scipy.sparse.coo import coo_matrix
+import pickle 
 
 global FOLD
+global DIVMBEST
 global NUM_CLASSES_OBJ
 global NUM_CLASSES_SKEL
 global NUM_CLASSES
@@ -126,6 +128,7 @@ def parse_parameters(sparm):
     global TEMPORAL
     global NODEONLY
     global FOLD
+    global DIVMBEST
     # set default values
     ANTICIPATING = False
     LOSS_METHOD = "micro"
@@ -152,10 +155,11 @@ def parse_parameters(sparm):
             HALLUCINATION = val
         if(opt == "--fold"):
             FOLD = val
+        if(opt == "--divmbest"):
+            DIVMBEST = val
 
 
 def parse_parameters_classify(attribute, value):
-    
     global CLASSIFY_METHOD
     global LEARN_METHOD
     global LOSS_METHOD
@@ -165,6 +169,7 @@ def parse_parameters_classify(attribute, value):
     global NODEONLY
     global HALLUCINATION
     global FOLD
+    global DIVMBEST
     # set default values
     #print attribute, value
     if(attribute == "--l"):
@@ -186,7 +191,8 @@ def parse_parameters_classify(attribute, value):
         HALLUCINATION = value
     if(attribute == "--fold"):
         FOLD = value
-
+    if(attribute == "--divmbest"):
+        DIVMBEST = value
 
 def read_examples(filename,sparm):
     global SINGLE_FRAME
@@ -416,6 +422,9 @@ def get_examples(filename):
         Labeling = readLabelingFile('../data/labeling_all_filtered.txt')
     else:
         Labeling = readLabelingFile('../data/labeling_ijrr_sampled.txt')
+
+    with open('LabelingBinary.bn', 'wb') as f:
+        pickle.dump(Labeling, f)
 
     ''' Read the frame features  '''
     #Features= readFrameFeatures(PATH + 'object_affordance_detection/activity_detection/frame_features/')
@@ -2281,642 +2290,6 @@ def lp_inference_sum1_IP(X,sm,sparm,LE):
     return ymax
 
 
-
-def lp_training(X,Y,sm,sparm):
-    global NODEONLY
-    global NUM_CLASSES_OBJ
-    global NUM_CLASSES_SKEL
-    K1 = NUM_CLASSES_OBJ
-    K2 = NUM_CLASSES_SKEL
-    N1 = X[3]
-    N2 = 1
-    if(NODEONLY == "true"):
-        N2 =  0
-    y = Y[0]
-    w = sm.w
-    edges_obj_obj = X[1]
-    edges_obj_skel = X[2]
-
-    E1 = edges_obj_obj.shape[0]
-    E2 = edges_obj_skel.shape[0]
-    lp = glpk.LPX()        # Create empty problem instance
-    lp.name = 'training'     # Assign symbolic name to problem
-    lp.obj.maximize = True # Set this as a maximization problem
-    lp.cols.add(X[0].shape[1])         # Append three columns to this instance
-
-
-    for c in lp.cols:      # Iterate over all columns
-        if (c.index < N1*K1):
-            c.name = 'y_obj_%d_%d' % ( c.index/K1 , (c.index%K1)+1) # Name them y_obj_0_1, etc
-            c.kind=int
-            
-        elif((c.index - N1*K1) < N2*K2) :
-            index = c.index  - N1*K1
-            c.name = 'y_skel_%d_%d' % ( index/K2 , (index%K2) + 1 ) # name them y_skel_0_1 etc
-            c.kind = int
-            
-        elif((c.index - N1*K1 - N2*K2) < K1*K1*E1):
-            index = c.index - N1*K1 - N2*K2
-            c.name = 'y_%d-%d_%d-%d' % ( edges_obj_obj[int(index/(K1*K1)),0] ,edges_obj_obj[int(index/(K1*K1)),1] , int((index%(K1*K1))/K1)+1 , int((index%(K1*K1))%K1)+1)
-            
-        else :
-            index = c.index - N1*K1 - N2*K2 - K1*K1*E1
-            c.name = 'y_%d-%d_%d-%d' % ( edges_obj_skel[int(index/(K1*K2)),0] ,edges_obj_skel[int(index/(K1*K2)),1] , int((index%(K1*K2))/K2)+1 , int((index%(K1*K2))%K2)+1)
-            
-        c.bounds = 0.0, 1.0    # Set bound 0 <= xi <= 1
-        #count_t +=1
-    #print count_t,X[0].shape[1]
-    x = X[0]
-    #x = (X[0]).todense()
-    w_list = [w[i] for i in xrange(0,x.shape[0])]
-    w_mat = csr_matrix(asmatrix(array(w_list)),dtype='d')
-    ##print w_list
-    ##print (asarray(w*x)[0]).tolist()
-   
-    #print w_mat.transpose().shape[1];
-
-   # lp.obj[:] = (asarray((w_mat.transpose()*x).todense())[0]).tolist() ##!!!!!!!!!!!! why did this work without transpose before ?
-    ##print lp.obj[:]
-
-
-
-    coeff_list = (asarray((w_mat*x).todense())[0]).tolist()
-    
-    for index in xrange(0,N1*K1):
-        if(y[index,0] == 1):
-            coeff_list[index] = coeff_list[index]-(1.0/(N1*K1))
-        else:
-            coeff_list[index] = coeff_list[index]+(1.0/(N1*K1))
-    for index in xrange( N1*K1, N1*K1 + N2*K2):
-        if(y[index,0] == 1):
-            coeff_list[index] = coeff_list[index]-(1.0/(N2*K2))
-        else:
-            coeff_list[index] = coeff_list[index]+(1.0/(N2*K2))
-
-    lp.obj[:] = coeff_list
-
-    lp.rows.add(3*E1*K1*K1+3*E2*K1*K2)
-    for r in lp.rows:      # Iterate over all rows
-        r.name = 'p%d' %  r.index # Name them
-
-    for i in xrange(0,2*E1*K1*K1):
-        lp.rows[i].bounds = 0, None
-    for i in xrange(2*E1*K1*K1,3*E1*K1*K1):
-        lp.rows[i].bounds = None,1
-    for i in xrange(3*E1*K1*K1,3*E1*K1*K1 +2*E2*K1*K2):
-        lp.rows[i].bounds = 0, None
-    for i in xrange(3*E1*K1*K1 + 2*E2*K1*K2, 3*E1*K1*K1 + 3*E2*K1*K2):
-        lp.rows[i].bounds = None,1
-
-
-    t = []
-    for e in xrange(0,E1):
-        u = edges_obj_obj[e,0]
-        v = edges_obj_obj[e,1]
-        n = -1
-        for i in xrange(0,K1):
-            for j in xrange(0,K1):
-                n += 1
-                a = int(u*K1 + i)
-                b = int(v*K1 + j)
-                c = N1*K1 + N2*K2 + e*K1*K1 + i*K1 + j
-                ec = e*K1*K1 + n
-                t.append((ec,a,1))
-                t.append((ec,c,-1))
-                ec += E1*K1*K1
-                t.append((ec,b,1))
-                t.append((ec,c,-1))
-                ec += E1*K1*K1
-                t.append((ec,a,1))
-                t.append((ec,b,1))
-                t.append((ec,c,-1))
-    for e in xrange(0,E2):
-        u = edges_obj_skel[e,0]
-        v = edges_obj_skel[e,1]
-        n = 3*E1*K1*K1 -1
-        for i in xrange(0,K1):
-            for j in xrange(0,K2):
-                n += 1
-                a = int(u*K1 + i)
-                b = int(K1*N1+ v*K2 + j)
-                c = N1*K1 + N2*K2 + E1*K1*K1 + e*K1*K2 + i*K2 + j
-                ec = e*K1*K2 + n
-                t.append((ec,a,1))
-                t.append((ec,c,-1))
-                ec += E2*K1*K2
-                t.append((ec,b,1))
-                t.append((ec,c,-1))
-                ec += E2*K1*K2
-                t.append((ec,a,1))
-                t.append((ec,b,1))
-                t.append((ec,c,-1))
-
-
-
-
-    ##print len(t)
-    lp.matrix = t
-    lp.simplex()
-  #  #print 'Z = %g;' % lp.obj.value,  # Retrieve and #print obj func value
-   # #print '; '.join('%s = %g' % (c.name, c.primal) for c in lp.cols)
-                       # #print struct variable names and primal val
-    labeling = asmatrix(array([c.primal for c in lp.cols]))
-    ##print labeling.T.shape[0],labeling.T.shape[1]
-    ymax = (csr_matrix(labeling.T,dtype='d'),N1,E1)
-    
-    c1 = 0
-    c0= 0
-    ch =0
-    cr = 0
-    for c in lp.cols:
-        if (c.primal == 1):
-            c1 += 1
-        elif(c.primal ==0):
-            c0 += 1
-        elif (c.primal == 0.5):
-            ch += 1
-        else:
-            cr +=1
-    #print "LP Counts:"
-    #print 'number of 1s: %d' % c1
-    #print 'number of 0s: %d' % c0
-    #print 'number of 0.5s: %d' % ch
-    #print 'number of 0s: %d' % cr
-   
-    score = asarray((w_mat*x*ymax[0]).todense())[0][0];
-    #print "score:" ,score
-    #print "objective value= ", (lp.obj.value)
-    #print "objective value w/ const= ", (lp.obj.value+(1.0/K1)+(1.0/K2))
-    #print 'score w/ loss: ' , round(score+loss(Y,ymax,sparm),2) #, ' score2: ',score2;
-    #print 'loss: ',loss(Y,ymax,sparm)
-    #print '\n'
-    if(lp.obj.value  > 2.1):
-      assert (round(lp.obj.value+(1.0/K1)+(1.0/K2),2) ==  round(score+loss(Y,ymax,sparm),2))
-
-    return ymax
-
-def lp_training_temporal_qpbo(X,Y,sm,sparm):
-    start = time.clock()
-
-    global NUM_CLASSES_OBJ
-    global NUM_CLASSES_SKEL
-    global NODEONLY
-    K1 = NUM_CLASSES_OBJ
-    K2 = NUM_CLASSES_SKEL
-    num_frame = X[5]
-    N1_list = X[3]
-    E1_list = X[4]
-    num_temporal_edges = X[8]
-    temporal_frame_list =  X[7]
-    w = sm.w
-    y = Y[0]
-    x = X[0]
-    #x = (X[0]).todense()
-    w_list = [w[i] for i in xrange(0,x.shape[0])]
-
-    w_mat = csr_matrix(asmatrix(array(w_list)),dtype='d')
-    ##print (asarray(w*x)[0]).tolist()
-
-    coeff_list = (asarray((w_mat*x).todense())[0]).tolist()
-   # print "coeff list length" , len(coeff_list)
-    qpbo_edges = 0
-    qpbo_nodes = 0
-    for f_index in xrange(0,num_frame):
-        N1 = N1_list[f_index]
-        N2 = 1
-        if(NODEONLY == "true"):
-            N2 =  0
-        E1 = X[1][f_index].shape[0]
-        E2 = X[2][f_index].shape[0]
-
-        qpbo_edges += E1*K1*K1+E2*K1*K2
-        qpbo_nodes += N1*K1+N2*K2
-
-    for e_index in xrange(0, num_temporal_edges):
-        #print e_index
-        E3 = X[6][e_index].shape[0]
-        E4 = 1
-        if(NODEONLY == "true"):
-            E4 =  0
-        qpbo_edges += E3*K1*K1+E4*K2*K2
-
-    #print qpbo_edges, qpbo_nodes, qpbo_nodes+qpbo_edges
-
-    qpbo = QPBO(qpbo_nodes,qpbo_edges)        # Create empty problem instance
-    qpbo.add_node(qpbo_nodes)
-    index_jump = 0
-    node_index_jump = 0
-    index_jump_map = {}
-    node_index_jump_map = {}
-    for f_index in xrange(0,num_frame):
-        index_jump_map[f_index] = index_jump
-        node_index_jump_map[f_index] = node_index_jump
-        N1 = N1_list[f_index]
-        N2 = 1
-        if(NODEONLY == "true"):
-            N2 =  0
-        edges_obj_obj = X[1][f_index]
-        edges_obj_skel = X[2][f_index]
-
-        E1 = edges_obj_obj.shape[0]
-        E2 = edges_obj_skel.shape[0]
-
-        #print "N:",N," K: ", K
-
-        for index_n in xrange(0,N1):
-            for index_k in xrange(0,K1):
-                if(y[index_jump + index_n*K1+index_k,0] == 1):
-                    coeff_list[index_jump + index_n*K1+index_k] = coeff_list[index_jump + index_n*K1+index_k]-(1.0/(N1*K1))
-                else:
-                    coeff_list[index_jump + index_n*K1+index_k] = coeff_list[index_jump + index_n*K1+index_k]+(1.0/(N1*K1))
-        for index_n in xrange(0,N2):
-            for index_k in xrange(0,K2):
-                if(y[index_jump + N1*K1+index_n*K2+index_k,0] == 1):
-                    coeff_list[index_jump + N1*K1+index_n*K2+index_k] = coeff_list[index_jump + N1*K1+index_n*K2+index_k]-(1.0/(N2*K2))
-                else:
-                    coeff_list[index_jump + N1*K1+index_n*K2+index_k] = coeff_list[index_jump + N1*K1+index_n*K2+index_k]+(1.0/(N2*K2))
-
-        for index in xrange(0,N1*K1+N2*K2):
-            qpbo.add_term(index+node_index_jump,0,-coeff_list[index+index_jump]);
-
-        for index in xrange(0,E1*K1*K1):
-            u = edges_obj_obj[int(index/(K1*K1)),0]
-            v = edges_obj_obj[int(index/(K1*K1)),1]
-            l = int((index%(K1*K1))/K1)
-            k = int((index%(K1*K1))%K1)
-
-            n1 = int(u*K1 + l) + node_index_jump
-            n2 = int(v*K1 + k) + node_index_jump
-           # print index+N1*K1+N2*K2 + index_jump
-            qpbo.add_term(n1,n2,0,0,0,-coeff_list[index+N1*K1+N2*K2 + index_jump])
-
-        for index in xrange(0,E2*K1*K2):
-            u = edges_obj_skel[int(index/(K1*K2)),0]
-            v = edges_obj_skel[int(index/(K1*K2)),1]
-            l = int((index%(K1*K2))/K2)
-            k = int((index%(K1*K2))%K2)
-
-            n1 = int(u*K1 + l) + node_index_jump
-            n2 = int(N1*K1+ v*K2 + k) + node_index_jump
-            qpbo.add_term(n1,n2,0,0,0,-coeff_list[index+N1*K1+N2*K2+E1*K1*K1 + index_jump])
-
-        node_index_jump += N1*K1 + N2*K2
-        index_jump += N1*K1+N2*K2+E1*K1*K1+E2*K1*K2
-
-    for e_index in xrange(0, num_temporal_edges):
-        edges_obj_temporal = X[6][e_index]
-        F1 = temporal_frame_list[e_index][0]
-        F2 = temporal_frame_list[e_index][1]
-        E3 = X[6][e_index].shape[0]
-        E4 = 1
-        if(NODEONLY == "true"):
-            E4 =  0
-        for index in xrange(0,E3*K1*K1):
-            u = edges_obj_temporal[int(index/(K1*K1)),0]
-            
-            l = int((index%(K1*K1))/K1)
-            k = int((index%(K1*K1))%K1)
-
-            n1 = int(u*K1 + l) + node_index_jump_map[F1]
-            n2 = int(u*K1 + k) + node_index_jump_map[F2]
-            qpbo.add_term(n1,n2,0,0,0,-coeff_list[index + index_jump])
-
-        for index in xrange(0,E4*K2*K2):
-            u = 0 # only one sub activity node
-            
-            l = int((index%(K2*K2))/K2)
-            k = int((index%(K2*K2))%K2)
-
-            n1 = int(N1*K1+ u*K2 + l) + node_index_jump_map[F1]
-            n2 = int(N1*K1+ u*K2 + k) + node_index_jump_map[F2]
-            qpbo.add_term(n1,n2,0,0,0,-coeff_list[index+E3*K1*K1 + index_jump])
-        
-        index_jump+= E3*K1*K1 + E4*K2*K2
-        ##print lp.obj[:]
-    qpbo.solve();
-    qpbo.compute_weak_persistencies();
-
-    labellist = [];
-    node_index_jump = 0
-    index_jump = 0
-    for f_index in xrange(0,num_frame):
-        ##print index_jump
-        N1 = N1_list[f_index]
-        N2 = 1
-        if(NODEONLY == "true"):
-            N2 =  0
-        edges_obj_obj = X[1][f_index]
-        edges_obj_skel = X[2][f_index]
-
-        E1 = edges_obj_obj.shape[0]
-        E2 = edges_obj_skel.shape[0]
-
-        for n in xrange(0,N1*K1+N2*K2):
-            l = qpbo.get_label(n + node_index_jump);
-            ##print n,l
-            if(l == 0):
-                labellist.append(0);
-            elif(l ==1):
-                labellist.append(1);
-            else:
-                labellist.append(0.5);
-
-        for index in xrange(0,E1*K1*K1):
-            u = edges_obj_obj[int(index/(K1*K1)),0]
-            v = edges_obj_obj[int(index/(K1*K1)),1]
-            l = int((index%(K1*K1))/K1)
-            k = int((index%(K1*K1))%K1)
-
-            l1 = labellist[int(u*K1 + l) + index_jump]
-            l2 = labellist[int(v*K1 + k) + index_jump]
-            if(l1*l2 == 0.25):
-                if(coeff_list[index+N1*K1+N2*K2 + index_jump]>0):
-                    labellist.append(0.5)
-                else:
-                    labellist.append(0)
-            else:
-                labellist.append(l1*l2);
-
-        for index in xrange(0,E2*K1*K2):
-            u = edges_obj_skel[int(index/(K1*K2)),0]
-            v = edges_obj_skel[int(index/(K1*K2)),1]
-            l = int((index%(K1*K2))/K2)
-            k = int((index%(K1*K2))%K2)
-
-            l1 = labellist[int(u*K1 + l) + index_jump]
-            l2 = labellist[int(N1*K1+v*K2 + k) + index_jump]
-            if(l1*l2 == 0.25):
-                if(coeff_list[index+N1*K1+N2*K2+E1*K1*K1 + index_jump]>0):
-                    labellist.append(0.5)
-                else:
-                    labellist.append(0)
-            else:
-                labellist.append(l1*l2);
-
-        node_index_jump += N1*K1 + N2*K2
-        index_jump += N1*K1+N2*K2+E1*K1*K1+E2*K1*K2
-
-    for e_index in xrange(0, num_temporal_edges):
-        edges_obj_temporal = X[6][e_index]
-        F1 = temporal_frame_list[e_index][0]
-        F2 = temporal_frame_list[e_index][1]
-        E3 = X[6][e_index].shape[0]
-        E4 = 1
-        if(NODEONLY == "true"):
-            E4 =  0
-        for index in xrange(0,E3*K1*K1):
-            u = edges_obj_temporal[int(index/(K1*K1)),0]
-
-            l = int((index%(K1*K1))/K1)
-            k = int((index%(K1*K1))%K1)
-
-            l1 = labellist[int(u*K1 + l) + index_jump_map[F1]]
-            l2 = labellist[int(u*K1 + k) + index_jump_map[F2]]
-            if(l1*l2 == 0.25):
-                if(coeff_list[index + index_jump]>0):
-                    labellist.append(0.5)
-                else:
-                    labellist.append(0)
-            else:
-                labellist.append(l1*l2);
-
-        for index in xrange(0,E4*K2*K2):
-            u = 0 # only one subactivity node
-            l = int((index%(K2*K2))/K2)
-            k = int((index%(K2*K2))%K2)
-
-            l1 = labellist[int(N1*K1+u*K2 + l) +  index_jump_map[F1]]
-            l2 = labellist[int(N1*K1+u*K2 + k) +  index_jump_map[F2]]
-            if(l1*l2 == 0.25):
-                if(coeff_list[index+E3*K1*K1 + index_jump]>0):
-                    labellist.append(0.5)
-                else:
-                    labellist.append(0)
-            else:
-                labellist.append(l1*l2);
-        index_jump+= E3*K1*K1 + E4*K2*K2
-
-  #  #print 'Z = %g;' % lp.obj.value,  # Retrieve and #print obj func value
-   # #print '; '.join('%s = %g' % (c.name, c.primal) for c in lp.cols)
-                       # #print struct variable names and primal val
-    labeling = asmatrix(array([labellist]))
-    #print labeling.T.shape[0],labeling.T.shape[1]
-    ymax = (csr_matrix(labeling.T,dtype='d'),N1_list,E1_list, num_frame)
-    c1 = 0
-    c0= 0
-    ch =0
-
-    for c in labellist:
-        if (c == 1):
-            c1 += 1
-        elif(c ==0):
-            c0 += 1
-        else:
-            ch +=1
-    #print "QPBO counts:"
-    #print 'number of 1s: %d' % c1
-    #print 'number of 0s: %d' % c0
-    #print 'number of 0.5s: %d' % ch
-    ##print ymax
-    ##print ymax[0].todense().size, labeling.size,  len(labellist)
-    score = asarray((w_mat*x*ymax[0]).todense())[0][0];
-
-    #print "objective value w/ const= ", (lp.obj.value+(1.0/K))
-    #print 'score : ' , round(score+loss(Y,ymax,sparm),2)
-    #print 'loss: ',loss(Y,ymax,sparm)
-    #print '\n'
-
-    #assert (round(lp.obj.value+(1.0/K),2) ==  round(score+loss(Y,ymax,sparm),2))
-    fin = time.clock()
-  #  print "Time for qpbo:", (fin-start)
-    return ymax
-
-def lp_training_multiple_frames_qpbo(X,Y,sm,sparm):
-    global NUM_CLASSES_OBJ
-    global NUM_CLASSES_SKEL
-    global NODEONLY
-    K1 = NUM_CLASSES_OBJ
-    K2 = NUM_CLASSES_SKEL
-    num_frame = X[5]
-    N1_list = X[3]
-    E1_list = X[4]
-    w = sm.w
-    y = Y[0]
-    x = X[0]
-    #x = (X[0]).todense()
-    w_list = [w[i] for i in xrange(0,x.shape[0])]
-
-    w_mat = csr_matrix(asmatrix(array(w_list)),dtype='d')
-    ##print (asarray(w*x)[0]).tolist()
-    
-    coeff_list = (asarray((w_mat*x).todense())[0]).tolist()
-    
-    qpbo_edges = 0
-    qpbo_nodes = 0
-    for f_index in xrange(0,num_frame):
-        N1 = N1_list[f_index]
-        N2 = 1
-
-        E1 = X[1][f_index].shape[0]
-        E2 = X[2][f_index].shape[0]
-
-        qpbo_edges += E1*K1*K1+E2*K1*K2
-        qpbo_nodes += N1*K1+N2*K2
-
-    #print qpbo_edges, qpbo_nodes, qpbo_nodes+qpbo_edges
-
-    qpbo = QPBO(qpbo_nodes,qpbo_edges)        # Create empty problem instance
-    qpbo.add_node(qpbo_nodes)
-    index_jump = 0
-    node_index_jump = 0
-    for f_index in xrange(0,num_frame):
-        N1 = N1_list[f_index]
-        N2 = 1
-        if(NODEONLY == "true"):
-            N2 =  0
-        edges_obj_obj = X[1][f_index]
-        edges_obj_skel = X[2][f_index]
-
-        E1 = edges_obj_obj.shape[0]
-        E2 = edges_obj_skel.shape[0]
-
-        #print "N:",N," K: ", K
-
-        for index_n in xrange(0,N1):
-            for index_k in xrange(0,K1):
-                if(y[index_jump + index_n*K1+index_k,0] == 1):
-                    coeff_list[index_jump + index_n*K1+index_k] = coeff_list[index_jump + index_n*K1+index_k]-(1.0/(N1*K1))
-                else:
-                    coeff_list[index_jump + index_n*K1+index_k] = coeff_list[index_jump + index_n*K1+index_k]+(1.0/(N1*K1))
-        for index_n in xrange(0,N2):
-            for index_k in xrange(0,K2):
-                if(y[index_jump + N1*K1+index_n*K2+index_k,0] == 1):
-                    coeff_list[index_jump + N1*K1+index_n*K2+index_k] = coeff_list[index_jump + N1*K1+index_n*K2+index_k]-(1.0/(N2*K2))
-                else:
-                    coeff_list[index_jump + N1*K1+index_n*K2+index_k] = coeff_list[index_jump + N1*K1+index_n*K2+index_k]+(1.0/(N2*K2))
-
-        for index in xrange(0,N1*K1+N2*K2):
-            qpbo.add_term(index+node_index_jump,0,-coeff_list[index+index_jump]);
-
-        for index in xrange(0,E1*K1*K1):
-            u = edges_obj_obj[int(index/(K1*K1)),0]
-            v = edges_obj_obj[int(index/(K1*K1)),1]
-            l = int((index%(K1*K1))/K1)
-            k = int((index%(K1*K1))%K1)
-
-            n1 = int(u*K1 + l) + node_index_jump
-            n2 = int(v*K1 + k) + node_index_jump
-            qpbo.add_term(n1,n2,0,0,0,-coeff_list[index+N1*K1+N2*K2 + index_jump])
-
-        for index in xrange(0,E2*K1*K2):
-            u = edges_obj_skel[int(index/(K1*K2)),0]
-            v = edges_obj_skel[int(index/(K1*K2)),1]
-            l = int((index%(K1*K2))/K2)
-            k = int((index%(K1*K2))%K2)
-
-            n1 = int(u*K1 + l) + node_index_jump
-            n2 = int(N1*K1+ v*K2 + k) + node_index_jump
-            qpbo.add_term(n1,n2,0,0,0,-coeff_list[index+N1*K1+N2*K2+E1*K1*K1 + index_jump])
-
-        node_index_jump += N1*K1 + N2*K2
-        index_jump += N1*K1+N2*K2+E1*K1*K1+E2*K1*K2
-        ##print lp.obj[:]
-    qpbo.solve();
-    qpbo.compute_weak_persistencies();
-
-    labellist = [];
-    node_index_jump = 0
-    index_jump = 0
-    for f_index in xrange(0,num_frame):
-        ##print index_jump
-        N1 = N1_list[f_index]
-        N2 = 1
-        if(NODEONLY == "true"):
-            N2 =  0
-
-        edges_obj_obj = X[1][f_index]
-        edges_obj_skel = X[2][f_index]
-
-        E1 = edges_obj_obj.shape[0]
-        E2 = edges_obj_skel.shape[0]
-
-        for n in xrange(0,N1*K1+N2*K2):
-            l = qpbo.get_label(n + node_index_jump);
-            ##print n,l
-            if(l == 0):
-                labellist.append(0);
-            elif(l ==1):
-                labellist.append(1);
-            else:
-                labellist.append(0.5);
-
-        for index in xrange(0,E1*K1*K1):
-            u = edges_obj_obj[int(index/(K1*K1)),0]
-            v = edges_obj_obj[int(index/(K1*K1)),1]
-            l = int((index%(K1*K1))/K1)
-            k = int((index%(K1*K1))%K1)
-
-            l1 = labellist[int(u*K1 + l) + index_jump]
-            l2 = labellist[int(v*K1 + k) + index_jump]
-            if(l1*l2 == 0.25):
-                if(coeff_list[index+N1*K1+N2*K2 + index_jump]>0):
-                    labellist.append(0.5)
-                else:
-                    labellist.append(0)
-            else:
-                labellist.append(l1*l2);
-
-        for index in xrange(0,E2*K1*K2):
-            u = edges_obj_skel[int(index/(K1*K2)),0]
-            v = edges_obj_skel[int(index/(K1*K2)),1]
-            l = int((index%(K1*K2))/K2)
-            k = int((index%(K1*K2))%K2)
-
-            l1 = labellist[int(u*K1 + l) + index_jump]
-            l2 = labellist[int(N1*K1+v*K2 + k) + index_jump]
-            if(l1*l2 == 0.25):
-                if(coeff_list[index+N1*K1+N2*K2+E1*K1*K1 + index_jump]>0):
-                    labellist.append(0.5)
-                else:
-                    labellist.append(0)
-            else:
-                labellist.append(l1*l2);
-
-        node_index_jump += N1*K1 + N2*K2
-        index_jump += N1*K1+N2*K2+E1*K1*K1+E2*K1*K2
-  #  #print 'Z = %g;' % lp.obj.value,  # Retrieve and #print obj func value
-   # #print '; '.join('%s = %g' % (c.name, c.primal) for c in lp.cols)
-                       # #print struct variable names and primal val
-    labeling = asmatrix(array([labellist]))
-    #print labeling.T.shape[0],labeling.T.shape[1]
-    ymax = (csr_matrix(labeling.T,dtype='d'),N1_list,E1_list, num_frame)
-    c1 = 0
-    c0= 0
-    ch =0
-
-    for c in labellist:
-        if (c == 1):
-            c1 += 1
-        elif(c ==0):
-            c0 += 1
-        else:
-            ch +=1
-    #print "QPBO counts:"
-    #print 'number of 1s: %d' % c1
-    #print 'number of 0s: %d' % c0
-    #print 'number of 0.5s: %d' % ch
-    ##print ymax
-    ##print ymax[0].todense().size, labeling.size,  len(labellist)
-    score = asarray((w_mat*x*ymax[0]).todense())[0][0];
-
-    #print "objective value w/ const= ", (lp.obj.value+(1.0/K))
-    #print 'score : ' , round(score+loss(Y,ymax,sparm),2)
-    #print 'loss: ',loss(Y,ymax,sparm)
-    #print '\n'
-
-    #assert (round(lp.obj.value+(1.0/K),2) ==  round(score+loss(Y,ymax,sparm),2))
-    return ymax
-
 def lp_inference_multiple_frames_sum1_IP(X,sm,sparm,LE):
     global NUM_CLASSES_OBJ
     global NUM_CLASSES_SKEL
@@ -3143,6 +2516,548 @@ def lp_inference_multiple_frames_sum1_IP(X,sm,sparm,LE):
     #if(lp.obj.value  > 1.1):
     #  assert (round(lp.obj.value,2) ==  round(score,2))
     return ymax
+
+def lp_inference_divmbest_temp(X,sm,sparm,LE):
+    global NUM_CLASSES_OBJ
+    global NUM_CLASSES_SKEL
+    # Parameters:
+    nummodes = 1
+    lamb = 0.9
+
+    #Get the example and prepare data
+    K1 = NUM_CLASSES_OBJ
+    K2 = NUM_CLASSES_SKEL
+    num_frames = X[5]
+    num_temporal_edges = X[8]
+    obj_map_list = X[10]
+    aid = X[11]
+
+    w = sm.w
+    x = X[0]
+    N1_list = X[3]
+    E1_list = X[4]
+    temporal_frame_list = X[7]
+
+    w_list = [w[i] for i in xrange(0,x.shape[0])]
+    
+    w_mat = csr_matrix(asmatrix(array(w_list)),dtype='d')
+    ##print w_mat.shape , x.shape
+    lp = glpk.LPX()        # Create empty problem instance
+    lp.name = 'inference'     # Assign symbolic name to problem
+    lp.obj.maximize = True # Set this as a maximization problem
+    lp.cols.add(X[0].shape[1])         # Append columns to this instance
+    lp.obj[:] = (asarray((w_mat*x).todense())[0]).tolist()
+
+
+    ##print lp.obj[:]
+    num_rows = 0
+    for f_index in xrange(0,num_frames):
+        E1 = X[1][f_index].shape[0]
+        E2 = X[2][f_index].shape[0]
+        N1 = N1_list[f_index]
+        N2 = 1
+        num_rows += 3*E1*K1*K1+3*E2*K1*K2+N1+N2
+
+        #might not be in final version
+    for e_index in xrange(0, num_temporal_edges):
+        E3 = X[6][e_index].shape[0]
+        E4 = 1
+        num_rows += 3*E3*K1*K1+3*E4*K2*K2
+
+    lp.rows.add(num_rows)
+    for r in lp.rows:      # Iterate over all rows
+        r.name = 'p%d' %  r.index # Name them
+
+    index_jump =0
+    row_index_jump = 0
+    t = []
+    index_jump_map = {} #Might not be in final version
+
+    for f_index in xrange(0,num_frames):
+        index_jump_map[f_index] = index_jump
+        edges_obj_obj = X[1][f_index]
+        edges_obj_skel = X[2][f_index]
+        E1 = edges_obj_obj.shape[0]
+        E2 = edges_obj_skel.shape[0]
+        N1 = N1_list[f_index]
+        N2 = 1
+        print "X",f_index,X
+        print "P",E1,edges_obj_obj
+        for cnum in xrange(index_jump,index_jump + N1*K1):      # Iterate over all columns
+            index = cnum  - index_jump
+            lp.cols[cnum].name = 'y_obj_%d_%d_%d' % ( f_index, index/K1 , (index%K1)+1) # Name them y_obj_0_1, etc
+            lp.cols[cnum].kind=int
+            lp.cols[cnum].bounds = 0.0, 1.0
+        for cnum in xrange(index_jump + N1*K1, index_jump + N1*K1 + N2*K2):
+            index = cnum  - index_jump - N1*K1
+            lp.cols[cnum].name = 'y_skel_%d_%d_%d' % ( f_index, index/K2 , (index%K2) + 1 ) # name them y_skel_0_1 etc
+            lp.cols[cnum].kind = int
+            lp.cols[cnum].bounds = 0.0, 1.0
+        for cnum in xrange(index_jump + N1*K1 + N2*K2, index_jump + N1*K1 + N2*K2 + K1*K1*E1):
+            index = cnum - index_jump - N1*K1 - N2*K2
+            lp.cols[cnum].name = 'y_%d_%d-%d_%d-%d' % ( f_index, edges_obj_obj[int(index/(K1*K1)),0] ,edges_obj_obj[int(index/(K1*K1)),1] , int((index%(K1*K1))/K1)+1 , int((index%(K1*K1))%K1)+1)
+            lp.cols[cnum].bounds = 0.0, 1.0
+        for cnum in xrange(index_jump + N1*K1 + N2*K2 + K1*K1*E1, index_jump + N1*K1 + N2*K2 + K1*K1*E1 + K1*K2*E2) :
+            index = cnum - index_jump - N1*K1 - N2*K2 - K1*K1*E1
+            lp.cols[cnum].name = 'y_%d_%d-%d_%d-%d' % ( f_index, edges_obj_skel[int(index/(K1*K2)),0] ,edges_obj_skel[int(index/(K1*K2)),1] , int((index%(K1*K2))/K2)+1 , int((index%(K1*K2))%K2)+1)
+            lp.cols[cnum].bounds = 0.0, 1.0    # Set bound 0 <= xi <= 1
+
+        for i in xrange(row_index_jump, row_index_jump + 2*E1*K1*K1):
+            lp.rows[i].bounds = 0, None
+        for i in xrange(row_index_jump + 2*E1*K1*K1, row_index_jump + 3*E1*K1*K1):
+            lp.rows[i].bounds = None,1
+        for i in xrange(row_index_jump + 3*E1*K1*K1, row_index_jump + 3*E1*K1*K1 +2*E2*K1*K2):
+            lp.rows[i].bounds = 0, None
+        for i in xrange(row_index_jump + 3*E1*K1*K1 + 2*E2*K1*K2, row_index_jump + 3*E1*K1*K1 + 3*E2*K1*K2):
+            lp.rows[i].bounds = None,1
+        for i in xrange(row_index_jump + 3*E1*K1*K1 + 3*E2*K1*K2 ,row_index_jump + 3*E1*K1*K1 + 3*E2*K1*K2 + N1):
+            if (LE == False) :
+                lp.rows[i].bounds = 1,1  ##SUM = 1
+            else:
+                lp.rows[i].bounds = None,1  ## SUM = 1 is changed to SUM<= 1
+        for i in xrange(row_index_jump + 3*E1*K1*K1 + 3*E2*K1*K2 +N1 ,row_index_jump + 3*E1*K1*K1 + 3*E2*K1*K2 + N1 + N2):
+            if (LE == False) :
+                lp.rows[i].bounds = 1,1  ##SUM = 1
+            else:
+                lp.rows[i].bounds = None,1  ## SUM = 1 is changed to SUM<= 1
+
+
+        for e in xrange(0,E1):
+            u = edges_obj_obj[e,0]
+            v = edges_obj_obj[e,1]
+            n = -1
+            for i in xrange(0,K1):
+                for j in xrange(0,K1):
+                    n += 1
+                    a = int(u*K1 + i) + index_jump
+                    b = int(v*K1 + j) + index_jump
+                    c = N1*K1 + N2*K2 + e*K1*K1 + i*K1 + j + index_jump
+                    ec = e*K1*K1 + n + row_index_jump
+                    t.append((ec,a,1))
+                    t.append((ec,c,-1))
+                    ec += E1*K1*K1
+                    t.append((ec,b,1))
+                    t.append((ec,c,-1))
+                    ec += E1*K1*K1
+                    t.append((ec,a,1))
+                    t.append((ec,b,1))
+                    t.append((ec,c,-1))
+        for e in xrange(0,E2):
+            u = edges_obj_skel[e,0]
+            v = edges_obj_skel[e,1]
+            n = 3*E1*K1*K1 -1
+            for i in xrange(0,K1):
+                for j in xrange(0,K2):
+                    n += 1
+                    a = int(u*K1 + i) + index_jump
+                    b = int(K1*N1+ v*K2 + j) + index_jump
+                    c = N1*K1 + N2*K2 + E1*K1*K1 + e*K1*K2 + i*K2 + j + index_jump
+                    ec = e*K1*K2 + n + row_index_jump
+                    t.append((ec,a,1))
+                    t.append((ec,c,-1))
+                    ec += E2*K1*K2
+                    t.append((ec,b,1))
+                    t.append((ec,c,-1))
+                    ec += E2*K1*K2
+                    t.append((ec,a,1))
+                    t.append((ec,b,1))
+                    t.append((ec,c,-1))
+        for e in xrange(0,N1):
+            r = 3*E1*K1*K1 + 3*E2*K1*K2 +e + row_index_jump
+            for i in xrange(0,K1):
+                c = e*K1+i + index_jump
+                t.append((r,c,1))
+        for e in xrange(0,N2):
+            r = 3*E1*K1*K1 + 3*E2*K1*K2 + N1 +e + row_index_jump
+            for i in xrange(0,K2):
+                c = K1*N1+ e*K2+i + index_jump
+                t.append((r,c,1))
+
+        row_index_jump += 3*E1*K1*K1+3*E2*K1*K2+N1+N2
+        index_jump += N1*K1 + N2*K2 + K1*K1*E1 + K1*K2*E2
+
+    for e_index in xrange(0, num_temporal_edges):
+        edges_obj_temporal = X[6][e_index]
+        E3 = edges_obj_temporal.shape[0]
+        E4 = 1
+        if(NODEONLY == "true"):
+            E4 =  0
+        for cnum in xrange(index_jump, index_jump +  K1*K1*E3):
+            index = cnum - index_jump
+            lp.cols[cnum].name = 'y_t_o_%d_%d_%d-%d' % ( e_index, edges_obj_temporal[int(index/(K1*K1)),0] , int((index%(K1*K1))/K1)+1 , int((index%(K1*K1))%K1)+1)
+            lp.cols[cnum].bounds = 0.0, 1.0
+        for cnum in xrange(index_jump +  K1*K1*E3, index_jump + K1*K1*E3 + K2*K2*E4) :
+            index = cnum - index_jump - N1*K1 - N2*K2 - K1*K1*E1
+            ##print index, K1, K2, index_jump
+            lp.cols[cnum].name = 'y_t_s_%d_%d-%d' % ( e_index, int((index%(K2*K2))/K2)+1 , int((index%(K2*K2))%K2)+1)
+            lp.cols[cnum].bounds = 0.0, 1.0    # Set bound 0 <= xi <= 1
+
+
+        for i in xrange(row_index_jump, row_index_jump + 2*E3*K1*K1):
+            lp.rows[i].bounds = 0, None
+        for i in xrange(row_index_jump + 2*E3*K1*K1, row_index_jump + 3*E3*K1*K1):
+            lp.rows[i].bounds = None,1
+        for i in xrange(row_index_jump + 3*E3*K1*K1, row_index_jump + 3*E3*K1*K1 +2*E4*K2*K2):
+            lp.rows[i].bounds = 0, None
+        for i in xrange(row_index_jump + 3*E3*K1*K1 + 2*E4*K2*K2, row_index_jump + 3*E3*K1*K1 + 3*E4*K2*K2):
+            lp.rows[i].bounds = None,1
+
+        for e in xrange(0,E3):
+            u = edges_obj_temporal[e,0]
+            index_jump_u = index_jump_map[temporal_frame_list[e_index][0]]
+            index_jump_v = index_jump_map[temporal_frame_list[e_index][1]]
+            n = -1
+            for i in xrange(0,K1):
+                for j in xrange(0,K1):
+                    n += 1
+                    a = int(u*K1 + i) + index_jump_u
+                    b = int(u*K1 + j) + index_jump_v
+                    c = e*K1*K1 + i*K1 + j + index_jump
+                    ec = e*K1*K1 + n + row_index_jump
+                    t.append((ec,a,1))
+                    t.append((ec,c,-1))
+                    ec += E3*K1*K1
+                    t.append((ec,b,1))
+                    t.append((ec,c,-1))
+                    ec += E3*K1*K1
+                    t.append((ec,a,1))
+                    t.append((ec,b,1))
+                    t.append((ec,c,-1))
+        for e in xrange(0,E4):
+            u = 0 # only one sub activity node
+            index_jump_u = index_jump_map[temporal_frame_list[e_index][0]]
+            index_jump_v = index_jump_map[temporal_frame_list[e_index][1]]
+            n = 3*E3*K1*K1 -1
+            for i in xrange(0,K2):
+                for j in xrange(0,K2):
+                    n += 1
+                    a = int(K1*N1+ u*K2 + i) + index_jump_u
+                    b = int(K1*N1+ u*K2 + j) + index_jump_v
+                    c =  E3*K1*K1 + e*K2*K2 + i*K2 + j + index_jump
+                    ec = e*K2*K2 + n + row_index_jump
+                    t.append((ec,a,1))
+                    t.append((ec,c,-1))
+                    ec += E4*K2*K2
+                    t.append((ec,b,1))
+                    t.append((ec,c,-1))
+                    ec += E4*K2*K2
+                    t.append((ec,a,1))
+                    t.append((ec,b,1))
+                    t.append((ec,c,-1))
+        row_index_jump += 3*E3*K1*K1 + 3*E4*K2*K2
+        index_jump += K1*K1*E3 + K2*K2*E4
+    ##print len(t)
+    ##print t
+    lp.matrix = t
+
+
+###########################################
+###########################################
+###########################################
+    retval=lp.simplex();
+
+    assert retval == None
+    labeling = asmatrix(array([c.primal for c in lp.cols]))
+    ##print labeling
+    index_jump =0
+    for f_index in xrange(0,num_frames):
+        E1 = X[1][f_index].shape[0]
+        E2 = X[2][f_index].shape[0]
+        N1 = X[3][f_index]
+        N2 = 1
+        for c in lp.cols:      # Iterate over all columns
+            if (c.index - index_jump < N1*K1 + N2*K2 and c.index > index_jump) :
+                c.kind=int
+        index_jump += N1*K1 + N2*K2 + K1*K1*E1 + K1*K2*E2
+
+    retval=lp.integer(tm_lim=300000)
+
+    MIPFin = time.clock()
+    print "Time for MIP:", (MIPFin-lpFin)
+
+    assert retval == None or retval == "tmlim"
+  #  #print 'Z = %g;' % lp.obj.value,  # Retrieve and #print obj func value
+   # #print '; '.join('%s = %g' % (c.name, c.primal) for c in lp.cols)
+                       # #print struct variable names and primal val
+    if(retval == None):
+        labeling = asmatrix(array([c.primal for c in lp.cols]))
+
+    #print labeling.T
+    #print labeling.shape
+    ymax = (csr_matrix(labeling.T,dtype='d'),N1_list,E1_list,num_frames,num_temporal_edges, obj_map_list)
+    #print ymax
+    c1 = 0
+    c0= 0
+    ch =0
+    cr = 0
+    for c in lp.cols:
+        if (c.primal == 1):
+            c1 += 1
+        elif(c.primal ==0):
+            c0 += 1
+        elif (c.primal == 0.5):
+            ch += 1
+        else:
+            cr +=1
+    #print 'number of 1s: %d' % c1
+    #print 'number of 0s: %d' % c0
+    #print 'number of 0.5s: %d' % ch
+    #print 'number of 0s: %d' % cr
+    #score = asarray((w_mat*x*ymax[0]).todense())[0][0];
+    score2 = 0#sm.svm_model.classify(psi(x,ymax,sm,sparm))
+    #print "objective value = ", round(lp.obj.value,2)
+    #print '\n score : ' , round(score,2), ' score2: ',score2;
+    #if(lp.obj.value  > 1.1):
+    #  assert (round(lp.obj.value,2) ==  round(score,2))
+    score = (w_mat*x*ymax[0])[0,0]
+    print "score:", score
+    f = open('predscore_'+aid+'.txt','w')
+    f.write(repr(score))
+    f.close()
+##############################################################################
+##############################################################################
+##############################################################################
+    start = time.clock()
+    for i in xrange(0,nummodes):
+        # run the inference
+        print "NO"
+        # apply the laggrange update 
+
+    return ymax
+
+
+def lp_inference_divmbest_not(X,sm,sparm,LE):
+    global NUM_CLASSES_OBJ
+    global NUM_CLASSES_SKEL
+    # Parameters:
+    nummodes = 10
+    lamb = -0.03
+
+    #Get the example and prepare data
+    K1 = NUM_CLASSES_OBJ
+    K2 = NUM_CLASSES_SKEL
+    num_frames = X[5]
+    num_temporal_edges = X[8]
+    obj_map_list = X[10]
+    aid = X[11] #Might delete later
+
+    w = sm.w
+    x = X[0]
+    N1_list = X[3]
+    E1_list = X[4]
+
+    w_list = [w[i] for i in xrange(0,x.shape[0])]
+    
+    w_mat = csr_matrix(asmatrix(array(w_list)),dtype='d')
+
+    lp = glpk.LPX()        # Create empty problem instance
+    lp.name = 'inference'     # Assign symbolic name to problem
+    lp.obj.maximize = True # Set this as a maximization problem
+    lp.cols.add(X[0].shape[1])         # Append three columns to this instance
+    lp.obj[:] = (asarray((w_mat*x).todense())[0]).tolist()
+    
+    num_rows = 0
+
+    for f_index in xrange(0,num_frames):
+        E1 = X[1][f_index].shape[0]
+        E2 = X[2][f_index].shape[0]
+        N1 = N1_list[f_index]
+        N2 = 1
+        num_rows += 3*E1*K1*K1+3*E2*K1*K2+N1+N2
+
+    lp.rows.add(num_rows)
+    for r in lp.rows:      # Iterate over all rows
+        r.name = 'p%d' %  r.index # Name them
+
+    index_jump =0
+    row_index_jump = 0
+    t = []
+
+    for f_index in xrange(0,num_frames):
+        edges_obj_obj = X[1][f_index]
+        edges_obj_skel = X[2][f_index]
+        E1 = edges_obj_obj.shape[0]
+        E2 = edges_obj_skel.shape[0]
+        N1 = N1_list[f_index]
+        N2 = 1
+        for c in lp.cols:      # Iterate over all columns
+            if (c.index < index_jump + N1*K1):
+                index = c.index  - index_jump
+                c.name = 'y_obj_%d_%d_%d' % ( f_index, index/K1 , (index%K1)+1) # Name them y_obj_0_1, etc
+                c.kind=int
+            elif((c.index - index_jump - N1*K1) < N2*K2) :
+                index = c.index  - index_jump - N1*K1
+                c.name = 'y_skel_%d_%d_%d' % ( f_index, index/K2 , (index%K2) + 1 ) # name them y_skel_0_1 etc
+                c.kind = int
+            elif((c.index - index_jump - N1*K1 - N2*K2) < K1*K1*E1):
+                index = c.index - index_jump - N1*K1 - N2*K2
+                c.name = 'y_%d_%d-%d_%d-%d' % ( f_index, edges_obj_obj[int(index/(K1*K1)),0] ,edges_obj_obj[int(index/(K1*K1)),1] , int((index%(K1*K1))/K1)+1 , int((index%(K1*K1))%K1)+1)
+            elif((c.index - index_jump - N1*K1 - N2*K2 - K1*K1*E1) < K1*K2*E2) :
+                index = c.index - index_jump - N1*K1 - N2*K2 - K1*K1*E1
+                ##print index, K1, K2, index_jump
+                c.name = 'y_%d_%d-%d_%d-%d' % ( f_index, edges_obj_skel[int(index/(K1*K2)),0] ,edges_obj_skel[int(index/(K1*K2)),1] , int((index%(K1*K2))/K2)+1 , int((index%(K1*K2))%K2)+1)
+
+            c.bounds = 0.0, 1.0    # Set bound 0 <= xi <= 1
+
+        for i in xrange(row_index_jump, row_index_jump + 2*E1*K1*K1):
+            lp.rows[i].bounds = 0, None
+        for i in xrange(row_index_jump + 2*E1*K1*K1, row_index_jump + 3*E1*K1*K1):
+            lp.rows[i].bounds = None,1
+        for i in xrange(row_index_jump + 3*E1*K1*K1, row_index_jump + 3*E1*K1*K1 +2*E2*K1*K2):
+            lp.rows[i].bounds = 0, None
+        for i in xrange(row_index_jump + 3*E1*K1*K1 + 2*E2*K1*K2, row_index_jump + 3*E1*K1*K1 + 3*E2*K1*K2):
+            lp.rows[i].bounds = None,1
+        for i in xrange(row_index_jump + 3*E1*K1*K1 + 3*E2*K1*K2 ,row_index_jump + 3*E1*K1*K1 + 3*E2*K1*K2 + N1):
+            if (LE == False) :
+                lp.rows[i].bounds = 1,1  ##SUM = 1
+            else:
+                lp.rows[i].bounds = None,1  ## SUM = 1 is changed to SUM<= 1
+        for i in xrange(row_index_jump + 3*E1*K1*K1 + 3*E2*K1*K2 +N1 ,row_index_jump + 3*E1*K1*K1 + 3*E2*K1*K2 + N1 + N2):
+            if (LE == False) :
+                lp.rows[i].bounds = 1,1  ##SUM = 1
+            else:
+                lp.rows[i].bounds = None,1  ## SUM = 1 is changed to SUM<= 1
+
+        for e in xrange(0,E1):
+            u = edges_obj_obj[e,0]
+            v = edges_obj_obj[e,1]
+            n = -1
+            for i in xrange(0,K1):
+                for j in xrange(0,K1):
+                    n += 1
+                    a = int(u*K1 + i) + index_jump
+                    b = int(v*K1 + j) + index_jump
+                    c = N1*K1 + N2*K2 + e*K1*K1 + i*K1 + j + index_jump
+                    ec = e*K1*K1 + n + row_index_jump
+                    t.append((ec,a,1))
+                    t.append((ec,c,-1))
+                    ec += E1*K1*K1
+                    t.append((ec,b,1))
+                    t.append((ec,c,-1))
+                    ec += E1*K1*K1
+                    t.append((ec,a,1))
+                    t.append((ec,b,1))
+                    t.append((ec,c,-1))
+
+
+        for e in xrange(0,E2):
+            u = edges_obj_skel[e,0]
+            v = edges_obj_skel[e,1]
+            n = 3*E1*K1*K1 -1
+            for i in xrange(0,K1):
+                for j in xrange(0,K2):
+                    n += 1
+                    a = int(u*K1 + i) + index_jump
+                    b = int(K1*N1+ v*K2 + j) + index_jump
+                    c = N1*K1 + N2*K2 + E1*K1*K1 + e*K1*K2 + i*K2 + j + index_jump
+                    ec = e*K1*K2 + n + row_index_jump
+                    t.append((ec,a,1))
+                    t.append((ec,c,-1))
+                    ec += E2*K1*K2
+                    t.append((ec,b,1))
+                    t.append((ec,c,-1))
+                    ec += E2*K1*K2
+                    t.append((ec,a,1))
+                    t.append((ec,b,1))
+                    t.append((ec,c,-1))
+
+        for e in xrange(0,N1):
+            r = 3*E1*K1*K1 + 3*E2*K1*K2 +e + row_index_jump
+            for i in xrange(0,K1):
+                c = e*K1+i + index_jump
+                t.append((r,c,1))
+        for e in xrange(0,N2):
+            r = 3*E1*K1*K1 + 3*E2*K1*K2 + N1 +e + row_index_jump
+            for i in xrange(0,K2):
+                c = K1*N1+ e*K2+i + index_jump
+                t.append((r,c,1))
+        row_index_jump += 3*E1*K1*K1+3*E2*K1*K2+N1+N2
+        index_jump += N1*K1 + N2*K2 + K1*K1*E1 + K1*K2*E2
+
+    ##print len(t)
+    ##print t
+    lp.matrix = t
+
+
+###########################################
+###########################################
+###########################################
+    start = time.clock()
+    retval=lp.simplex();
+
+#    print "Time for LP:", (lpFin-start)
+
+    assert retval == None
+    labeling = asmatrix(array([c.primal for c in lp.cols]))
+    ##print labeling
+    index_jump =0
+    for f_index in xrange(0,num_frames):
+        E1 = X[1][f_index].shape[0]
+        E2 = X[2][f_index].shape[0]
+        N1 = X[3][f_index]
+        N2 = 1
+        if(NODEONLY == "true"):
+            N2 =  0
+        for c in lp.cols:      # Iterate over all columns
+            if (c.index - index_jump < N1*K1 + N2*K2 and c.index > index_jump) :
+                c.kind=int
+        index_jump += N1*K1 + N2*K2 + K1*K1*E1 + K1*K2*E2
+
+    Ob = lp.obj[:]
+    DMB = {'val':[],'labels':[]}
+    for i in xrange(0,nummodes):
+        lpFin = time.clock()
+        retval=lp.integer(tm_lim=300000)
+        MIPFin = time.clock()
+        print "Time for MIP:", (MIPFin-lpFin)
+        print "R",retval
+        assert retval == None or retval == "tmlim"
+        if(retval == None):
+            labeling = asmatrix(array([c.primal for c in lp.cols]))
+        ymax = (csr_matrix(labeling.T,dtype='d'),N1_list,E1_list,num_frames,num_temporal_edges, obj_map_list)
+
+        if (i==0):
+            ymax_d=ymax
+
+        index_jump = 0
+        labelss = []
+        for f_index in xrange(0,num_frames):    
+            N1 = ymax[1][f_index]
+            N2 = 1
+            E1 = ymax[2][f_index][0]
+            E2 =ymax[2][f_index][1]
+
+            if(N1>0):
+                y_obj = ymax[0][index_jump : index_jump + N1*NUM_CLASSES_OBJ]
+                lbss =  get_labels_dm(y_obj,NUM_CLASSES_OBJ,N1)
+                labelss.append(lbss)
+            if(N2>0):
+                y_skel = ymax[0][index_jump + N1*NUM_CLASSES_OBJ: index_jump + N1*NUM_CLASSES_OBJ+N2*NUM_CLASSES_SKEL]
+                lbss =  get_labels_dm(y_skel,NUM_CLASSES_SKEL,1)
+                labelss.append(lbss)
+            index_jump += N1*K1+N2*K2+ E1*K1*K1 + E2*K1*K2
+
+
+        #Update labels
+        row_le=N1*K1+N2*K2+ E1*K1*K1 + E2*K1*K2
+        val =0;
+        gygy=ymax[0].todense()[:];
+        for b in xrange(len(Ob)):
+            val = val + Ob[b]*gygy[b]
+
+        DMB['labels'].append(labelss)
+        DMB['val'].append(val)
+        for f_index in xrange(0,num_frames):
+            for id_o in xrange(0,N1):
+                lp.obj[f_index*row_le+id_o*NUM_CLASSES_OBJ+ (labelss[f_index*2][id_o]-1)] = lp.obj[f_index*row_le+id_o*NUM_CLASSES_OBJ+ (labelss[f_index*2][id_o]-1)] + lamb
+            lp.obj[f_index*(row_le)+N1*NUM_CLASSES_OBJ+(labelss[f_index*2+1][0]-1)] = lp.obj[f_index*(row_le)+N1*NUM_CLASSES_OBJ+(labelss[f_index*2+1][0]-1)] + lamb            
+        
+    score2 = 0
+    f = open(aid+'_dmbest.bn', 'wb')
+    pickle.dump(DMB,f)
+    f.close()
+    return ymax_d
+
 
 def lp_inference_temporal_sum1_IP(X,sm,sparm,LE):
     global NUM_CLASSES_OBJ
@@ -3420,6 +3335,38 @@ def lp_inference_temporal_sum1_IP(X,sm,sparm,LE):
     #print labeling.T
     #print labeling.shape
     ymax = (csr_matrix(labeling.T,dtype='d'),N1_list,E1_list,num_frames,num_temporal_edges, obj_map_list)
+##########################################
+##########################################
+    index_jump = 0
+    labelss = []
+    for f_index in xrange(0,num_frames):    
+        N1 = ymax[1][f_index]
+        N2 = 1
+        E1 = ymax[2][f_index][0]
+        E2 =ymax[2][f_index][1]
+
+        if(N1>0):
+            y_obj = ymax[0][index_jump : index_jump + N1*NUM_CLASSES_OBJ]
+            lbss =  get_labels_dm(y_obj,NUM_CLASSES_OBJ,N1)
+            labelss.append(lbss)
+        if(N2>0):
+            y_skel = ymax[0][index_jump + N1*NUM_CLASSES_OBJ: index_jump + N1*NUM_CLASSES_OBJ+N2*NUM_CLASSES_SKEL]
+            lbss =  get_labels_dm(y_skel,NUM_CLASSES_SKEL,1)
+            labelss.append(lbss)
+        index_jump += N1*K1+N2*K2+ E1*K1*K1 + E2*K1*K2
+
+    DMB = {'val':[],'labels':[]}
+    DMB['labels'].append(labelss)
+    DMB['val'].append(lp.obj.value)
+    f = open(aid+'_mrf.bn', 'wb')
+    pickle.dump(DMB,f)
+    f.close()
+
+###############################################
+##################################################33
+
+
+
     #print ymax
     c1 = 0
     c0= 0
@@ -3453,148 +3400,6 @@ def lp_inference_temporal_sum1_IP(X,sm,sparm,LE):
 
 
 
-def lp_training_qpbo(X,Y,sm,sparm):
-    global NUM_CLASSES_OBJ
-    global NUM_CLASSES_SKEL
-    global NODEONLY
-    K1 = NUM_CLASSES_OBJ
-    K2 = NUM_CLASSES_SKEL
-    N1 = X[3]
-    N2 = 1
-    if(NODEONLY == "true"):
-        N2 =  0
-    y = Y[0]
-    w = sm.w
-    edges_obj_obj = X[1]
-    edges_obj_skel = X[2]
-
-    E1 = edges_obj_obj.shape[0]
-    E2 = edges_obj_skel.shape[0]
-
-    qpbo = QPBO(N1*K1+N2*K2,E1*K1*K1+E2*K1*K2)        # Create empty problem instance
-    qpbo.add_node(N1*K1+N2*K2)
-    #print "N:",N," K: ", K
-    x = X[0]
-    #x = (X[0]).todense()
-    w_list = [w[i] for i in xrange(0,x.shape[0])]
-
-    w_mat = csr_matrix(asmatrix(array(w_list)),dtype='d')
-    #print w_list
-    ##print (asarray(w*x)[0]).tolist()
-    coeff_list = (asarray((w_mat*x).todense())[0]).tolist()
-    for index_n in xrange(0,N1):
-        for index_k in xrange(0,K1):
-            if(y[index_n*K1+index_k,0] == 1):
-                coeff_list[index_n*K1+index_k] = coeff_list[index_n*K1+index_k]-(1.0/(N1*K1))
-            else:
-                coeff_list[index_n*K1+index_k] = coeff_list[index_n*K1+index_k]+(1.0/(N1*K1))
-    for index_n in xrange(0,N2):
-        
-        for index_k in xrange(0,K2):
-            if(y[N1*K1+index_n*K2+index_k,0] == 1):
-                coeff_list[N1*K1+index_n*K2+index_k] = coeff_list[N1*K1+index_n*K2+index_k]-(1.0/(N2*K2))
-            else:
-                coeff_list[N1*K1+index_n*K2+index_k] = coeff_list[N1*K1+index_n*K2+index_k]+(1.0/(N2*K2))
-
-    for index in xrange(0,N1*K1+N2*K2):
-        qpbo.add_term(index,0,-coeff_list[index]);
-
-    for index in xrange(0,E1*K1*K1):
-        u = edges_obj_obj[int(index/(K1*K1)),0]
-        v = edges_obj_obj[int(index/(K1*K1)),1]
-        l = int((index%(K1*K1))/K1)
-        k = int((index%(K1*K1))%K1)
-
-        n1 = int(u*K1 + l)
-        n2 = int(v*K1 + k)
-        qpbo.add_term(n1,n2,0,0,0,-coeff_list[index+N1*K1+N2*K2])
-
-    for index in xrange(0,E2*K1*K2):
-        u = edges_obj_skel[int(index/(K1*K2)),0]
-        v = edges_obj_skel[int(index/(K1*K2)),1]
-        l = int((index%(K1*K2))/K2)
-        k = int((index%(K1*K2))%K2)
-
-        n1 = int(u*K1 + l)
-        n2 = int(N1*K1+ v*K2 + k)
-        qpbo.add_term(n1,n2,0,0,0,-coeff_list[index+N1*K1+N2*K2+E1*K1*K1])
-    ##print lp.obj[:]
-    qpbo.solve();
-    qpbo.compute_weak_persistencies();
-
-    labellist = [];
-    for n in xrange(0,N1*K1+N2*K2):
-        l = qpbo.get_label(n);
-        #print n,l
-        if(l == 0):
-            labellist.append(0);
-        elif(l ==1):
-            labellist.append(1);
-        else:
-            labellist.append(0.5);
-
-    for index in xrange(0,E1*K1*K1):
-        u = edges_obj_obj[int(index/(K1*K1)),0]
-        v = edges_obj_obj[int(index/(K1*K1)),1]
-        l = int((index%(K1*K1))/K1)
-        k = int((index%(K1*K1))%K1)
-
-        l1 = labellist[int(u*K1 + l)]
-        l2 = labellist[int(v*K1 + k)]
-        if(l1*l2 == 0.25):
-            if(coeff_list[index+N1*K1+N2*K2]>0):
-                labellist.append(0.5)
-            else:
-                labellist.append(0)
-        else:
-            labellist.append(l1*l2);
-    for index in xrange(0,E2*K1*K2):
-        u = edges_obj_skel[int(index/(K1*K2)),0]
-        v = edges_obj_skel[int(index/(K1*K2)),1]
-        l = int((index%(K1*K2))/K2)
-        k = int((index%(K1*K2))%K2)
-
-        l1 = labellist[int(u*K1 + l)]
-        l2 = labellist[int(N1*K1+v*K2 + k)]
-        if(l1*l2 == 0.25):
-            if(coeff_list[index+N1*K1+N2*K2+E1*K1*K1]>0):
-                labellist.append(0.5)
-            else:
-                labellist.append(0)
-        else:
-            labellist.append(l1*l2);
-  #  #print 'Z = %g;' % lp.obj.value,  # Retrieve and #print obj func value
-   # #print '; '.join('%s = %g' % (c.name, c.primal) for c in lp.cols)
-                       # #print struct variable names and primal val
-    labeling = asmatrix(array([labellist]))
-    #print labeling.T.shape[0],labeling.T.shape[1]
-    ymax = (csr_matrix(labeling.T,dtype='d'),N1,E1)
-    c1 = 0
-    c0= 0
-    ch =0
-    
-    for c in labellist:
-        if (c == 1):
-            c1 += 1
-        elif(c ==0):
-            c0 += 1
-        else:
-            ch +=1
-    #print "QPBO counts:"
-    #print 'number of 1s: %d' % c1
-    #print 'number of 0s: %d' % c0
-    #print 'number of 0.5s: %d' % ch
-    
-    score = asarray((w_mat*x*ymax[0]).todense())[0][0];
-
-    #print "objective value w/ const= ", (lp.obj.value+(1.0/K))
-    #print 'score : ' , round(score+loss(Y,ymax,sparm),2)
-    #print 'loss: ',loss(Y,ymax,sparm)
-    #print '\n'
-    
-    #assert (round(lp.obj.value+(1.0/K),2) ==  round(score+loss(Y,ymax,sparm),2))
-    return ymax
-
 
 
 def classification_score(x,y,sm,sparm):
@@ -3622,10 +3427,15 @@ def classify_example(x, sm, sparm):
     global SINGLE_FRAME
     global TEMPORAL
     global HALLUCINATION
+    global DIVMBEST
+    print "D",DIVMBEST
     #y = (mat(ones((1,x[0].shape[1]))),x[2],sm.num_classes)
     #l = lp_inference(x,sm,sparm)
     if(SINGLE_FRAME == "true"):
         l = lp_inference_sum1_IP(x,sm,sparm,False)
+    elif(DIVMBEST == "true"):
+#        l = lp_inference_temporal_sum1_IP(x, sm, sparm, False)
+        l = lp_inference_divmbest_not(x, sm, sparm, False)
     elif(TEMPORAL == "false"):
         l = lp_inference_multiple_frames_sum1_IP(x, sm, sparm, False)
     else:
@@ -3648,21 +3458,6 @@ def areEqualVectors(V1,V2):
     for i in xrange(0,V1.shape[0]):
         assert(round(V1[i,0]*2, 0)==round(V2[i,0]*2, 0))
         
-def find_most_violated_constraint(x, y, sm, sparm):
-    """Returns the most violated constraint for example (x,y)."""
-    # Similar, but include the loss.
-    global SINGLE_FRAME
-    global TEMPORAL
-    #print "MOST VIOLATED Constraint"
-    if( SINGLE_FRAME == "true"):
-        l1 = lp_training_qpbo(x,y,sm,sparm)
-    elif(TEMPORAL == "false" ):
-        l1 = lp_training_multiple_frames_qpbo(x, y, sm, sparm)
-    else:
-        l1 = lp_training_temporal_qpbo(x, y, sm, sparm)
-    #l1 = lp_training(x,y,sm,sparm)
-    
-    return l1
 
 def psi(x, y, sm, sparm):
     
@@ -3924,6 +3719,18 @@ def read_model(filename, sparm):
     import cPickle, bz2
     return cPickle.load(file(filename))
 
+def get_labels_dm(Y,K,N):
+    y = Y
+    lbs = []
+    for node in xrange(0,N):
+        ym=-1
+        for label in xrange(0,K):
+            if(y[node*K+label,0]>ym):
+                ym=y[node*K+label,0]
+        for label in xrange(0,K):
+            if(y[node*K+label,0] == ym):
+                lbs.append(label+1)
+    return lbs
 
 
 
@@ -4061,7 +3868,7 @@ def eval_prediction_single_frame(exnum, (x, y), ypred, sm, sparm, teststats):
 
     ypred_obj = ypred[0][0:N1*NUM_CLASSES_OBJ]
     ypred_skel = ypred[0][N1*NUM_CLASSES_OBJ:N1*NUM_CLASSES_OBJ+N2*NUM_CLASSES_SKEL]
-    
+
     obj_res = evaluation_class_pr_sum1(y_obj, ypred_obj, NUM_CLASSES_OBJ , N1, sparm)
     skel_res = evaluation_class_pr_sum1(y_skel, ypred_skel, NUM_CLASSES_SKEL , N2, sparm)
     teststats.append((obj_res,skel_res))
@@ -4126,7 +3933,7 @@ def print_testing_stats_objects( K, teststats):
         aggZeroPreds +=t[4];
         aggMultiplePreds +=t[5];
         aggConfusionMatrixWMultiple+=t[6];
-
+#pointer to changes
 
     total_tc  = 0
     total_pc = 0
@@ -4136,14 +3943,11 @@ def print_testing_stats_objects( K, teststats):
             avgp[label,0] = tpcount[label,0]/float(singlepredcount[label,0])
         if(truecount[label,0] !=0):
             avgr[label,0] = tpcount[label,0]/float(truecount[label,0])
-      #  avgp[label,0] = avgp[label,0]/len(teststats)
-      #  avgr[label,0] = avgr[label,0]/len(teststats)
-        print "label ",label+1, " prec: " , avgp[label,0], " recall: " ,avgr[label,0], " tp: ", tpcount[label,0], " tc: ", truecount[label,0], " pc: ", singlepredcount[label,0]
+        #print "label ",label+1, " prec: " , avgp[label,0], " recall: " ,avgr[label,0], " tp: ", tpcount[label,0], " tc: ", truecount[label,0], " pc: ", singlepredcount[label,0]
         total_tc +=  truecount[label,0]
         total_pc += singlepredcount[label,0]
         total_tp += tpcount[label,0]
     print "prec: ", total_tp/total_pc , "recall: ",total_tp/total_tc ,"tp: ", total_tp, " pc: ", total_pc, "tc: ", total_tc
-    #print "Error per Test example: ", teststats
     print "confusion matrix:"
     print aggConfusionMatrix;
     savetxt('conf.txt',aggConfusionMatrix,fmt='%d');
@@ -4175,4 +3979,3 @@ def print_testing_stats(sample, sm, sparm, teststats):
         print_testing_stats_objects(NUM_CLASSES_OBJ,teststats_obj )
     print "Activity detection : "
     print_testing_stats_objects(NUM_CLASSES_SKEL, teststats_skel)
-

@@ -138,7 +138,7 @@ void read_input_parameters(int argc, char **argv, char *testfile,
       }
   }
   if((i+1)>=argc) {
-    printf("\nNot enough input parameters!\n\n");
+    printf("\n Not enough input parameters!\n\n",i,argc);
     print_help();
     exit(0);
   }

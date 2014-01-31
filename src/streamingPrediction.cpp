@@ -648,7 +648,6 @@ int main(int argc, char** argv) {
 		args.push_back(0);
 
 
-
 		svm_classifier_init(14 , &args[0]);
 		svm_classifier( 14 , &args[0] );
 		interpretPrediction("pred_"+all_files[i]+".txt", all_files[i], true);
