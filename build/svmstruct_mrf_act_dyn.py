@@ -2830,8 +2830,8 @@ def lp_inference_divmbest_not(X,sm,sparm,LE):
     global NUM_CLASSES_OBJ
     global NUM_CLASSES_SKEL
     # Parameters:
-    nummodes = 10
-    lamb = -0.01
+    nummodes = 20
+    lamb = -0.04
 
     #Get the example and prepare data
     K1 = NUM_CLASSES_OBJ
@@ -3009,7 +3009,7 @@ def lp_inference_divmbest_not(X,sm,sparm,LE):
         lpFin = time.clock()
         retval=lp.integer(tm_lim=300000)
         MIPFin = time.clock()
-        print "Time for MIP:", (MIPFin-lpFin)
+        print "Time for DBEST MIP:", (MIPFin-lpFin)
         print "R",retval
         assert retval == None or retval == "tmlim"
         if(retval == None):
@@ -3323,7 +3323,7 @@ def lp_inference_temporal_sum1_IP(X,sm,sparm,LE):
 
 
     MIPFin = time.clock()
-    print "Time for MIP:", (MIPFin-lpFin)
+    print "Time for MRF MIP:", (MIPFin-lpFin)
 
     assert retval == None or retval == "tmlim"
   #  #print 'Z = %g;' % lp.obj.value,  # Retrieve and #print obj func value
