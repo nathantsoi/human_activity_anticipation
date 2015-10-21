@@ -6,6 +6,9 @@ Code for anticipating human activities (http://pr.cs.cornell.edu/anticipation/)
 
 If using this code please cite: 
 
+rCRF: Recursive Belief Estimation over CRFs in RGB-D Activity Videos
+Ozan Sener, Ashutosh Saxena
+Robotics Science and Systems (RSS) 2015
 
 Anticipating Human Activities using Object Affordances for Reactive Robotic Response, 
 Hema S Koppula, Ashutosh Saxena. Robotics: Science and Systems (RSS), 2013.
