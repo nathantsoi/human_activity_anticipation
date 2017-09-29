@@ -27,7 +27,7 @@ typedef pcl::PointXYZRGB PointT;
 using namespace std;
 using namespace pcl;
 
-#define sqr(x) ((x)*(x))
+#define my_sqr(x) ((x)*(x))
 
 using namespace std;
 

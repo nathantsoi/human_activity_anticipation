@@ -13,10 +13,10 @@
 #include "constants.h"
 //#include <opencv/cv.h>
 //#include <opencv/highgui.h>
-#include <opencv2/opencv.hpp>
 #include <pcl/point_types.h>
 #include "includes/point_types.h"
 #include "includes/CombineUtils.h"
+#include <opencv2/opencv.hpp>
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/random/discrete_distribution.hpp>
 //#include "includes/bezier.h";
@@ -29,7 +29,7 @@ typedef pcl::PointXYZRGB PointT;
 using namespace std;
 using namespace pcl;
 
-#define sqr(x) ((x)*(x))
+#define my_sqr(x) ((x)*(x))
 
 using namespace std;
 

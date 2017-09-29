@@ -12,6 +12,12 @@
 #include <pcl/features/normal_3d.h>
 #include <pcl/features/impl/normal_3d.hpp>
 
+#include <pcl/impl/pcl_base.hpp>
+#include <pcl/kdtree/impl/kdtree_flann.hpp>
+#include <pcl/search/impl/kdtree.hpp>
+#include <pcl/search/impl/organized.hpp>
+#include <pcl/features/impl/normal_3d.hpp>
+
 #include "pcl/io/pcd_io.h"
 #include "includes/point_types.h"
 #include <pcl/point_types.h>

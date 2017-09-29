@@ -125,7 +125,7 @@ void readLabelFile() {
     while (getline(file, line)) {
         stringstream lineStream(line);
         string element1, element2;
-        parseChk(getline(lineStream, element1, ','));
+        parseChk(!getline(lineStream, element1, ',').fail());
 
         if (element1.compare("END") == 0) {
             break;
@@ -136,14 +136,14 @@ void readLabelFile() {
         } else{
         	SegCount[element1] += 1;
         }
-        parseChk(getline(lineStream, element2, ',')); // get start frame
+        parseChk(!getline(lineStream, element2, ',').fail()); // get start frame
 		int startF = atoi(element2.c_str());
-		parseChk(getline(lineStream, element2, ',')); // get end frame
+		parseChk(!getline(lineStream, element2, ',').fail()); // get end frame
 		int endF = atoi(element2.c_str());
-        parseChk(getline(lineStream, element2, ',')); // get activity
+        parseChk(!getline(lineStream, element2, ',').fail()); // get activity
         ActLabelMap[element1][SegCount[element1]] = element2.c_str();
         int objId = 1;
-        while (getline(lineStream, element2, ',')) {
+        while (!getline(lineStream, element2, ',').fail()) {
             LabelMap[element1][SegCount[element1]][objId] =element2.c_str();
             int seg = SegCount[element1];
             //cout << element1 << "," << seg <<"," << objId << "," << LabelMap[element1][seg][objId] << endl;
@@ -169,14 +169,14 @@ void readSegmentsFile() {
 	while (getline(file, line)) {
 		stringstream lineStream(line);
 		string element1, element2;
-		parseChk(getline(lineStream, element1, ';'));
+		parseChk(!getline(lineStream, element1, ';').fail());
 
 		if (element1.compare("END") == 0) {
 			break;
 		}
 
-		//parseChk(getline(lineStream, element2, ',')); // get actor
-		while (getline(lineStream, element2, ';')) {
+		//parseChk(!getline(lineStream, element2, ',').fail()); // get actor
+		while (!getline(lineStream, element2, ';').fail()) {
 			int pos = element2.find_first_of(':');
 			int cluster = atoi(element2.substr(0, pos).c_str());
 			SegmentFrameCount[element1][cluster] = 0;
@@ -219,14 +219,14 @@ void readLabelFile() {
 	while (getline(file, line)) {
 		stringstream lineStream(line);
 		string element1, element2;
-		parseChk(getline(lineStream, element1, ','));
+		parseChk(!getline(lineStream, element1, ',').fail());
 
 		if (element1.compare("END") == 0) {
 			break;
 		}
 
-		//parseChk(getline(lineStream, element2, ',')); // get actor
-		while (getline(lineStream, element2, ',')) {
+		//parseChk(!getline(lineStream, element2, ',').fail()); // get actor
+		while (!getline(lineStream, element2, ',').fail()) {
 			FrameList[element1].insert(atoi(element2.c_str()));
 		}
 
@@ -250,19 +250,19 @@ void readDataActMap(string actfile) {
 	while (getline(file, line)) {
 		stringstream lineStream(line);
 		string element1, element2, element3;
-		parseChk(getline(lineStream, element1, ','));
+		parseChk(!getline(lineStream, element1, ',').fail());
 
 		if (element1.compare("END") == 0) {
 			break;
 		}
-		parseChk(getline(lineStream, element2, ','));
+		parseChk(!getline(lineStream, element2, ',').fail());
 		if (element1.length() != 10) {
 			errorMsg("Data Act Map file format mismatch..");
 		}
 
 		data_act_map[element1] = element2;
-		parseChk(getline(lineStream, element3, ',')); // get actor
-		while (getline(lineStream, element3, ',')) {
+		parseChk(!getline(lineStream, element3, ',').fail()); // get actor
+		while (!getline(lineStream, element3, ',').fail()) {
                         cout << element3 << endl;
 			//vector<string> fields;
 			//boost::split_regex( fields, element3, boost::regex( ":" ) );
@@ -340,7 +340,7 @@ string interpretPrediction(string filename, string aid, bool orig){
 			int segCount = 0;
 			stringstream lineStream(line);
 			string element1, element2, element3, element4;
-			while(getline(lineStream, element1, ';')){
+			while(!getline(lineStream, element1, ';').fail()){
 				segCount ++;
 			//while(element1.compare("")!=0){
 				stringstream segStream(element1);
@@ -367,7 +367,7 @@ string interpretPrediction(string filename, string aid, bool orig){
 					lastseglabel += ":" + it->second ;
 				}
 				predLabeling.clear();
-				//getline(lineStream, element1, ';');
+				//!getline(lineStream, element1, ';').fail();
 				cout << "element1:" << element1 << ":" << endl;
 
 			}

@@ -830,8 +830,8 @@ void affordanceMaps::readAffMap(){
 	while (getline(file, line)) {
 		stringstream lineStream(line);
 	    string element1, element2;
-	    getline(lineStream, element1, ',');
-	    while(getline(lineStream, element2, ',')){
+	    !getline(lineStream, element1, ',').fail();
+	    while(!getline(lineStream, element2, ',').fail()){
 	    	AffMap[element1].insert(element2);
 	    }
 	}

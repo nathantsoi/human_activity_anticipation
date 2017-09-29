@@ -86,14 +86,14 @@ void readSegmentsFile() {
     while (getline(file, line)) {
         stringstream lineStream(line);
         string element1, element2;
-        parseChk(getline(lineStream, element1, ';'));
+        parseChk(!getline(lineStream, element1, ';').fail());
 
         if (element1.compare("END") == 0) {
             break;
         }
 
-        //parseChk(getline(lineStream, element2, ',')); // get actor
-        while (getline(lineStream, element2, ';')) {
+        //parseChk(!getline(lineStream, element2, ',').fail()); // get actor
+        while (!getline(lineStream, element2, ';').fail()) {
             int pos = element2.find_first_of(':');
             int cluster = atoi(element2.substr(0, pos).c_str());
             cout << "cluster: " << cluster  <<" :" ;
@@ -136,14 +136,14 @@ void readLabelFile() {
     while (getline(file, line)) {
         stringstream lineStream(line);
         string element1, element2;
-        parseChk(getline(lineStream, element1, ','));
+        parseChk(!getline(lineStream, element1, ',').fail());
 
         if (element1.compare("END") == 0) {
             break;
         }
 
-        //parseChk(getline(lineStream, element2, ',')); // get actor
-        while (getline(lineStream, element2, ',')) {
+        //parseChk(!getline(lineStream, element2, ',').fail()); // get actor
+        while (!getline(lineStream, element2, ',').fail()) {
             FrameList[element1].insert(atoi(element2.c_str()));
         }
 
@@ -168,19 +168,19 @@ void readDataActMap(string actfile) {
     while (getline(file, line)) {
         stringstream lineStream(line);
         string element1, element2, element3;
-        parseChk(getline(lineStream, element1, ','));
+        parseChk(!getline(lineStream, element1, ',').fail());
 
         if (element1.compare("END") == 0) {
             break;
         }
-        parseChk(getline(lineStream, element2, ','));
+        parseChk(!getline(lineStream, element2, ',').fail());
         if (element1.length() != 10) {
             errorMsg("Data Act Map file format mismatch..");
         }
 
         data_act_map[element1] = element2;
-        parseChk(getline(lineStream, element3, ',')); // get actor
-        while (getline(lineStream, element3, ',')) {
+        parseChk(!getline(lineStream, element3, ',').fail()); // get actor
+        while (!getline(lineStream, element3, ',').fail()) {
             data_obj_map[element1].push_back(element3);
         }
 

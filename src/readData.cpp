@@ -94,7 +94,7 @@ private:
             stringstream lineStream(line);
             string element;
 
-            parseChk(getline(lineStream, element, ','), true);
+            parseChk(!getline(lineStream, element, ',').fail(), true);
             currentFrameNum = atoi((char*) element.c_str());
             //cout << "skipping frame " << currentFrameNum << " from skeleton data" << endl;
             if (element.compare("END") == 0) {
@@ -120,7 +120,7 @@ private:
                 stringstream lineStream(line);
                 string element;
 
-                parseChk(getline(lineStream, element, ','), true);
+                parseChk(!getline(lineStream, element, ',').fail(), true);
                 currentFrameNum = atoi((char*) element.c_str());
                 //cout << "skipping frame " << currentFrameNum << " from skeleton data" << endl;
                 if (element.compare("END") == 0) {
@@ -141,7 +141,7 @@ private:
             int pos_jointCount = 0;
             int pos_joint_dataCount = 0;
 
-            parseChk(getline(lineStream, element, ','), true);
+            parseChk(!getline(lineStream, element, ',').fail(), true);
             currentFrameNum = atoi((char*) element.c_str());
 
             if (element.compare("END") == 0) {
@@ -149,7 +149,7 @@ private:
                 return false;
             }
 
-            while (getline(lineStream, element, ',')) {
+            while (!getline(lineStream, element, ',').fail()) {
                 double e = strtod((char*) element.c_str(), NULL);
 
                 if (jointCount < JOINT_NUM) {
@@ -157,10 +157,10 @@ private:
                     joint_dataCount++;
 
                     if (joint_dataCount == JOINT_DATA_ORI_NUM) {
-                        parseChk(getline(lineStream, element, ','), true); // ori conf value
+                        parseChk(!getline(lineStream, element, ',').fail(), true); // ori conf value
                         data_CONF[jointCount][0] = atoi((char*) element.c_str());
                     } else if (joint_dataCount >= JOINT_DATA_NUM) {
-                        parseChk(getline(lineStream, element, ','), true); // pos conf value
+                        parseChk(!getline(lineStream, element, ',').fail(), true); // pos conf value
                         data_CONF[jointCount][1] = atoi((char*) element.c_str());
                         jointCount++;
                         joint_dataCount = 0;
@@ -174,7 +174,7 @@ private:
                     pos_data[pos_jointCount][pos_joint_dataCount] = e;
                     pos_joint_dataCount++;
                     if (pos_joint_dataCount >= POS_JOINT_DATA_NUM) {
-                        parseChk(getline(lineStream, element, ','), true); // pos conf value
+                        parseChk(!getline(lineStream, element, ',').fail(), true); // pos conf value
                         data_pos_CONF[pos_jointCount] = atoi((char*) element.c_str());
 
                         pos_jointCount++;
@@ -184,7 +184,7 @@ private:
             }
 
             // check if there is more data in current frame..
-            if (getline(lineStream, element, ',')) {
+            if (!getline(lineStream, element, ',').fail()) {
                 errorMsg("more data exist in skeleton data ..\n");
             }
 
@@ -656,7 +656,7 @@ if (getline(*file_RGBD,line)) {
     stringstream lineStream(line);
     string element;
     
-    bool status = parseChk(getline(lineStream, element, ','), false);
+    bool status = parseChk(!getline(lineStream, element, ',').fail(), false);
     if (!status) {
         file_ended = true;
         return false;                
@@ -674,7 +674,7 @@ if (getline(*file_RGBD,line)) {
     for (int y=0;y<Y_RES;y++) {
         for (int x=0;x<X_RES;x++) {   
             for (int d = 0; d<RGBD_data; d++) {         
-                status = parseChk(getline(lineStream, element, ','), false);
+                status = parseChk(!getline(lineStream, element, ',').fail(), false);
                 if (!status) {
                     file_ended = true;
                     return false;

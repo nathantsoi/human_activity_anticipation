@@ -3,9 +3,9 @@
 #include <assert.h>
 //#include <opencv/cv.h>
 //#include <opencv/highgui.h>
-#include <opencv2/opencv.hpp>
 #include <pcl/point_types.h>
 #include <pcl/io/pcd_io.h>
+#include <opencv2/opencv.hpp>
 #include "frame_skel.h"
 //#include "Point2D.h"
 //#include "HOG.cpp"
@@ -25,7 +25,7 @@ typedef pcl::PointXYZRGB PointT;
 #include "includes/point_types.h"
 #include "includes/CombineUtils.h"
 
-#define sqr(x) ((x)*(x))
+#define my_sqr(x) ((x)*(x))
 
 using namespace std;
 

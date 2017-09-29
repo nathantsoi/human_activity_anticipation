@@ -175,9 +175,9 @@
         }
         vector<int> indices;
         for (int i = 0; i < cloud.size(); i++) {
-            double dist_from_cam = sqrt(sqr(origin.x - cloud.points[i].x) +
-                    sqr(origin.y - cloud.points[i].y) +
-                    sqr(origin.z - cloud.points[i].z));
+            double dist_from_cam = sqrt(my_sqr(origin.x - cloud.points[i].x) +
+                    my_sqr(origin.y - cloud.points[i].y) +
+                    my_sqr(origin.z - cloud.points[i].z));
             if (dist_from_cam < 2500 && dist_from_cam > 500 && tablePoints.find(i) == tablePoints.end()) {
                 indices.push_back(i);
             }
